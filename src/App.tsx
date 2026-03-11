@@ -296,12 +296,24 @@ export default function App() {
             {
               role: 'user',
               content: `
-                数据摘要 (样本):
-                ${JSON.stringify(filteredData.slice(0, 50), null, 2)}
+                数据分析上下文:
+                1. 总体概况:
+                   - 总订单数: ${orderCount}
+                   - 总销售额: ¥${filteredData.reduce((acc, d) => acc + (d['销售额'] || 0), 0).toLocaleString()}
+                   - 总销量: ${filteredData.reduce((acc, d) => acc + (d['销量'] || 0), 0).toLocaleString()}
                 
-                当前筛选下的总订单数: ${orderCount}
-                当前筛选下的总销售额: ${filteredData.reduce((acc, d) => acc + (d['销售额'] || 0), 0)}
+                2. 平台销售分布 (销售额):
+                   ${JSON.stringify(getPlatformChartData(filteredData, 'sales'), null, 2)}
+                
+                3. 每周销售趋势 (销售额):
+                   ${JSON.stringify(getWeeklyChartData(filteredData, 'sales'), null, 2)}
+                
+                4. 品类表现摘要 (前15名):
+                   ${JSON.stringify(getSummaryData(filteredData).sort((a, b) => b.sales - a.sales).slice(0, 15), null, 2)}
 
+                5. 数据样本 (前10条):
+                   ${JSON.stringify(filteredData.slice(0, 10), null, 2)}
+                
                 用户的问题: ${userQuery || '请对当前数据进行常规分析，包括趋势、品类表现和改进建议。'}
               `
             }
