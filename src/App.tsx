@@ -103,6 +103,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isRemapping, setIsRemapping] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState('');
+  const [aiReasoning, setAiReasoning] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [userQuery, setUserQuery] = useState('');
 
@@ -352,9 +353,11 @@ export default function App() {
 
       const result = await response.json();
       setAiAnalysis(result.choices?.[0]?.message?.content || '未能生成分析报告。');
+      setAiReasoning(result.choices?.[0]?.message?.reasoning_content || '');
     } catch (err) {
       console.error(err);
       setAiAnalysis('AI 分析过程中出错: ' + (err as Error).message);
+      setAiReasoning('');
     } finally {
       setIsAnalyzing(false);
     }
@@ -845,8 +848,17 @@ export default function App() {
                 </div>
 
                 {aiAnalysis ? (
-                  <div className="prose prose-slate max-w-none bg-slate-50 p-6 rounded-xl border border-slate-200 whitespace-pre-wrap text-sm leading-relaxed">
-                    {aiAnalysis}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="prose prose-slate max-w-none bg-slate-50 p-6 rounded-xl border border-slate-200 whitespace-pre-wrap text-sm leading-relaxed">
+                      <h3 className="font-bold mb-2">分析结果</h3>
+                      {aiAnalysis}
+                    </div>
+                    {aiReasoning && (
+                      <div className="prose prose-slate max-w-none bg-blue-50 p-6 rounded-xl border border-blue-200 whitespace-pre-wrap text-sm leading-relaxed">
+                        <h3 className="font-bold mb-2 text-blue-800">推导过程</h3>
+                        {aiReasoning}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="h-64 flex flex-col items-center justify-center text-slate-400 space-y-2 border-2 border-dashed border-slate-100 rounded-xl">
