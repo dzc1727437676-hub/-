@@ -250,8 +250,15 @@ export default function App() {
   };
 
   const deleteMskuMapping = async (id: number) => {
-    await fetch(`/api/mappings/msku/${id}`, { method: 'DELETE' });
-    fetchMappings();
+    console.log('Deleting MSKU mapping:', id);
+    try {
+      const response = await fetch(`/api/mappings/msku/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('删除失败');
+      fetchMappings();
+    } catch (error) {
+      console.error('删除失败:', error);
+      alert('删除失败，请稍后重试。');
+    }
   };
 
   const savePlatformMapping = async (mapping: PlatformMapping) => {
@@ -264,8 +271,15 @@ export default function App() {
   };
 
   const deletePlatformMapping = async (id: number) => {
-    await fetch(`/api/mappings/platform/${id}`, { method: 'DELETE' });
-    fetchMappings();
+    console.log('Deleting platform mapping:', id);
+    try {
+      const response = await fetch(`/api/mappings/platform/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('删除失败');
+      fetchMappings();
+    } catch (error) {
+      console.error('删除失败:', error);
+      alert('删除失败，请稍后重试。');
+    }
   };
 
   const saveSetting = async (key: string, value: string) => {
@@ -680,8 +694,8 @@ export default function App() {
                           <BarChart data={getPlatformChartData(filteredData, chartMetric)}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="name" fontSize={12} />
-                            <YAxis fontSize={12} />
-                            <Tooltip formatter={(val: any) => chartMetric === 'sales' ? `¥${val.toLocaleString()}` : val} />
+                            <YAxis fontSize={12} tickFormatter={val => chartMetric === 'sales' ? `${val}万` : val} />
+                            <Tooltip formatter={(val: any, name: any, props: any) => [props.payload.displayValue, chartMetric === 'sales' ? '销售额' : '订单量']} />
                             <Bar dataKey="value" fill="#0F172A" radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
@@ -703,8 +717,8 @@ export default function App() {
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="name" fontSize={12} />
-                            <YAxis fontSize={12} />
-                            <Tooltip formatter={(val: any) => chartMetric === 'sales' ? `¥${val.toLocaleString()}` : val} />
+                            <YAxis fontSize={12} tickFormatter={val => chartMetric === 'sales' ? `${val}万` : val} />
+                            <Tooltip formatter={(val: any, name: any, props: any) => [props.payload.displayValue, chartMetric === 'sales' ? '销售额' : '订单量']} />
                             <Area type="monotone" dataKey="value" stroke="#10B981" fillOpacity={1} fill="url(#colorValue)" strokeWidth={2} />
                           </AreaChart>
                         </ResponsiveContainer>
@@ -914,11 +928,16 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
   </button>
 );
 
-const StatCard = ({ title, value, icon }: any) => (
+const StatCard = ({ title, value, icon, trend }: any) => (
   <Card className="p-6 flex items-center justify-between">
     <div className="space-y-1">
       <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{title}</p>
       <p className="text-2xl font-bold">{value}</p>
+      {trend !== undefined && (
+        <p className={`text-xs font-medium ${trend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+          {trend >= 0 ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}%
+        </p>
+      )}
     </div>
     <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center text-slate-400">
       {icon}
@@ -931,7 +950,10 @@ const MappingSection = ({ title, description, data, onSave, onDelete, onBulkImpo
   const [newEntry, setNewEntry] = useState<any>({});
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingEntry, setEditingEntry] = useState<any>({});
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
+  const [isConfirmingBulkDelete, setIsConfirmingBulkDelete] = useState(false);
   const [mskuFilter, setMskuFilter] = useState('');
   const [platformFilter, setPlatformFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -999,6 +1021,10 @@ const MappingSection = ({ title, description, data, onSave, onDelete, onBulkImpo
     setIsAdding(false);
   };
 
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [paginatedData]);
+
   const handleStartEdit = (row: any) => {
     setEditingId(row.id);
     setEditingEntry({ ...row });
@@ -1024,6 +1050,40 @@ const MappingSection = ({ title, description, data, onSave, onDelete, onBulkImpo
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditingEntry({});
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.length === filteredData.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredData.map((row: any) => row.id));
+    }
+  };
+
+  const handleSelectRow = (id: number) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(selectedId => selectedId !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!isConfirmingBulkDelete) {
+      setIsConfirmingBulkDelete(true);
+      return;
+    }
+    
+    try {
+      await Promise.all(selectedIds.map(id => onDelete(id)));
+      setSelectedIds([]);
+      setIsConfirmingBulkDelete(false);
+      alert('删除成功！');
+    } catch (error) {
+      console.error('删除失败:', error);
+      setIsConfirmingBulkDelete(false);
+      alert('删除失败，请稍后重试。');
+    }
   };
 
   const handleExport = () => {
@@ -1053,6 +1113,21 @@ const MappingSection = ({ title, description, data, onSave, onDelete, onBulkImpo
           <p className="text-slate-500 text-sm">{description}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {selectedIds.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setSelectedIds([])} variant="ghost" size="sm">
+                清空选中
+              </Button>
+              {isConfirmingBulkDelete && (
+                <Button onClick={() => setIsConfirmingBulkDelete(false)} variant="ghost" size="sm">
+                  取消
+                </Button>
+              )}
+              <Button onClick={handleDeleteSelected} variant={isConfirmingBulkDelete ? "primary" : "danger"} size="sm">
+                <Trash2 className="w-4 h-4 mr-1" /> {isConfirmingBulkDelete ? '确认删除?' : `删除选中 (${selectedIds.length})`}
+              </Button>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <div className="relative w-full md:w-40">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -1141,6 +1216,14 @@ const MappingSection = ({ title, description, data, onSave, onDelete, onBulkImpo
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
               <tr>
+                <th className="px-3 py-2 w-10">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedIds.length === filteredData.length && filteredData.length > 0}
+                    onChange={handleSelectAll}
+                    className="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  />
+                </th>
                 {fields.map((f: any) => (
                   <th key={f.name} className="px-3 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     {f.label}
@@ -1152,13 +1235,21 @@ const MappingSection = ({ title, description, data, onSave, onDelete, onBulkImpo
             <tbody className="divide-y divide-slate-100">
               {paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={fields.length + 1} className="text-center py-12 text-slate-400 italic text-sm">
+                  <td colSpan={fields.length + 2} className="text-center py-12 text-slate-400 italic text-sm">
                     {searchTerm ? '未找到匹配的条目。' : '暂无匹配条目。'}
                   </td>
                 </tr>
               ) : (
                 paginatedData.map((row: any) => (
                   <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-3 py-1.5">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.includes(row.id)}
+                        onChange={() => handleSelectRow(row.id)}
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                      />
+                    </td>
                     {fields.map((f: any) => (
                       <td key={f.name} className="px-3 py-1.5 text-xs text-slate-600">
                         {editingId === row.id ? (
@@ -1190,9 +1281,15 @@ const MappingSection = ({ title, description, data, onSave, onDelete, onBulkImpo
                             <button onClick={() => handleStartEdit(row)} className="text-slate-300 hover:text-slate-600 transition-colors" title="编辑">
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={() => onDelete(row.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="删除">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {confirmingId === row.id ? (
+                              <button onClick={() => { onDelete(row.id); setConfirmingId(null); }} className="text-red-600 font-bold text-xs" title="确认删除">
+                                确认?
+                              </button>
+                            ) : (
+                              <button onClick={() => setConfirmingId(row.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="删除">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
@@ -1264,6 +1361,8 @@ const MappingSection = ({ title, description, data, onSave, onDelete, onBulkImpo
 
 // --- Chart Data Helpers ---
 
+const formatSales = (value: number) => (value / 10000).toFixed(2) + '万';
+
 const getPlatformChartData = (data: OrderData[], metric: 'orders' | 'sales' = 'orders') => {
   const counts: any = {};
   
@@ -1278,7 +1377,11 @@ const getPlatformChartData = (data: OrderData[], metric: 'orders' | 'sales' = 'o
     }
   });
 
-  return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  return Object.entries(counts).map(([name, value]) => ({ 
+    name, 
+    value: metric === 'sales' ? (value as number) / 10000 : value,
+    displayValue: metric === 'sales' ? formatSales(value as number) : value
+  }));
 };
 
 const getWeeklyChartData = (data: OrderData[], metric: 'orders' | 'sales' = 'orders') => {
@@ -1298,7 +1401,11 @@ const getWeeklyChartData = (data: OrderData[], metric: 'orders' | 'sales' = 'ord
 
   return Object.entries(counts)
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([name, value]) => ({ name, value }));
+    .map(([name, value]) => ({ 
+      name, 
+      value: metric === 'sales' ? (value as number) / 10000 : value,
+      displayValue: metric === 'sales' ? formatSales(value as number) : value
+    }));
 };
 
 const getSummaryData = (data: OrderData[]) => {
