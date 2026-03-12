@@ -98,8 +98,10 @@ export default function App() {
   const [mskuMappings, setMskuMappings] = useState<MSKUMapping[]>([]);
   const [platformMappings, setPlatformMappings] = useState<PlatformMapping[]>([]);
   const [processedData, setProcessedData] = useState<OrderData[]>([]);
+  const [rawData, setRawData] = useState<OrderData[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(false);
+  const [isRemapping, setIsRemapping] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [userQuery, setUserQuery] = useState('');
@@ -150,6 +152,7 @@ export default function App() {
         header: true,
         skipEmptyLines: true,
         complete: (results) => {
+          setRawData(results.data as OrderData[]);
           const processed = processData(results.data as OrderData[], mskuMappings, platformMappings);
           setProcessedData(processed);
           setLoading(false);
@@ -160,6 +163,13 @@ export default function App() {
     reader.readAsText(file, importEncoding);
     // Reset input value to allow re-uploading the same file
     e.target.value = '';
+  };
+
+  const reapplyMappings = () => {
+    setIsRemapping(true);
+    const processed = processData(rawData, mskuMappings, platformMappings);
+    setProcessedData(processed);
+    setIsRemapping(false);
   };
 
   const [importEncoding, setImportEncoding] = useState<'UTF-8' | 'GBK'>('UTF-8');
@@ -442,7 +452,7 @@ export default function App() {
                 </div>
                 <div className="space-y-2">
                   <h2 className="text-xl font-bold">上传周报表</h2>
-                  <p className="text-slate-500 text-sm">选择从电商平台下载的 CSV 原始数据文件。</p>
+                  <p className="text-slate-500 text-sm">请从 <span className="font-bold text-slate-800">领星 (Lingxing)</span> 下载销售统计数据 CSV 文件并上传。</p>
                 </div>
 
                 <div className="flex flex-col items-center gap-4 w-full max-w-xs mx-auto">
@@ -629,6 +639,10 @@ export default function App() {
                       <Button variant="ghost" size="sm" onClick={() => setFilters({ platform: '', category1: '', attr_name: '', product_type: '', week: '', month: '', startDate: '', endDate: '' })}>
                         重置筛选
                       </Button>
+                      <Button variant="primary" size="sm" onClick={reapplyMappings} disabled={isRemapping || rawData.length === 0}>
+                        {isRemapping ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
+                        一键映射
+                      </Button>
                     </div>
                   </Card>
 
@@ -701,7 +715,19 @@ export default function App() {
                   <Card className="p-6 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="font-bold flex items-center gap-2"><TableIcon className="w-4 h-4" /> 销售额汇总 (可直接复制)</h3>
-                      <p className="text-xs text-slate-400">按平台与品类汇总，方便快速复制到 Excel。</p>
+                      <Button onClick={() => {
+                        const csv = Papa.unparse(filteredData);
+                        const blob = new Blob([new TextEncoder().encode(csv)], { type: 'text/csv;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `映射后总表_${new Date().toISOString().split('T')[0]}.csv`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }} variant="secondary" size="sm">
+                        <Download className="w-4 h-4" /> 导出总表
+                      </Button>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
