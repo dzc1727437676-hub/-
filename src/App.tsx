@@ -25,7 +25,8 @@ import {
   X,
   Edit2,
   Save,
-  RotateCcw
+  RotateCcw,
+  Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
@@ -37,6 +38,23 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { processData, type OrderData, type MSKUMapping, type PlatformMapping } from './utils';
 import { GoogleGenAI } from "@google/genai";
+
+interface AiReport {
+  reasoning?: string;
+  summary: string;
+  sections: {
+    title: string;
+    content: string;
+    chart?: {
+      type: 'bar' | 'line' | 'pie';
+      title: string;
+      data: any[];
+    } | null;
+  }[];
+  suggestions: string[];
+}
+
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 // --- UI Components ---
 
@@ -104,6 +122,8 @@ export default function App() {
   const [isRemapping, setIsRemapping] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [aiReasoning, setAiReasoning] = useState('');
+  const [aiReport, setAiReport] = useState<AiReport | null>(null);
+  const [aiRawError, setAiRawError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [userQuery, setUserQuery] = useState('');
 
@@ -316,7 +336,26 @@ export default function App() {
           messages: [
             {
               role: 'system',
-              content: '你是一个专业的电商数据分析专家。请根据用户提供的数据摘要和具体问题进行深度分析。'
+              content: `你是一个专业的电商数据分析专家。
+请根据用户提供的数据摘要和具体问题进行深度分析。
+你必须以严格的 JSON 格式输出你的分析结果，不要包含任何 Markdown 格式（如 \`\`\`json），直接输出 JSON 字符串。
+JSON 结构必须如下：
+{
+  "reasoning": "你的思考和推导过程（可选）",
+  "summary": "一句话核心结论摘要",
+  "sections": [
+    {
+      "title": "分析维度标题（如：销售趋势分析）",
+      "content": "详细的文字分析内容",
+      "chart": {
+        "type": "bar", // 必须是 "bar", "line", 或 "pie"。如果不需要图表则设为 null
+        "title": "图表标题",
+        "data": [{"name": "类别A", "value": 100}, {"name": "类别B", "value": 200}] // 数据必须包含 name 和 value 字段
+      }
+    }
+  ],
+  "suggestions": ["行动建议1", "行动建议2"]
+}`
             },
             {
               role: 'user',
@@ -352,12 +391,36 @@ export default function App() {
       }
 
       const result = await response.json();
-      setAiAnalysis(result.choices?.[0]?.message?.content || '未能生成分析报告。');
-      setAiReasoning(result.choices?.[0]?.message?.reasoning_content || '');
+      const content = result.choices?.[0]?.message?.content || '';
+      const reasoning = result.choices?.[0]?.message?.reasoning_content || '';
+      
+      try {
+        let jsonStr = content;
+        const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (match) {
+          jsonStr = match[1];
+        }
+        const parsed = JSON.parse(jsonStr);
+        if (reasoning && !parsed.reasoning) {
+          parsed.reasoning = reasoning;
+        }
+        setAiReport(parsed);
+        setAiRawError('');
+        setAiAnalysis('');
+        setAiReasoning('');
+      } catch (e) {
+        console.error("Failed to parse AI response as JSON", e);
+        setAiReport(null);
+        setAiRawError(content);
+        setAiAnalysis(content);
+        setAiReasoning(reasoning);
+      }
     } catch (err) {
       console.error(err);
       setAiAnalysis('AI 分析过程中出错: ' + (err as Error).message);
+      setAiRawError('AI 分析过程中出错: ' + (err as Error).message);
       setAiReasoning('');
+      setAiReport(null);
     } finally {
       setIsAnalyzing(false);
     }
@@ -847,7 +910,91 @@ export default function App() {
                   </div>
                 </div>
 
-                {aiAnalysis ? (
+                {aiReport ? (
+                  <div className="space-y-6">
+                    {/* Reasoning */}
+                    {aiReport.reasoning && (
+                      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
+                          <BrainCircuit className="w-4 h-4" /> 推导过程
+                        </h3>
+                        <p className="text-sm text-blue-900 whitespace-pre-wrap leading-relaxed">{aiReport.reasoning}</p>
+                      </div>
+                    )}
+
+                    {/* Summary */}
+                    <div className="bg-emerald-50 p-6 rounded-xl border border-emerald-100">
+                      <h3 className="font-bold text-emerald-800 mb-2 text-lg">核心摘要</h3>
+                      <p className="text-emerald-900">{aiReport.summary}</p>
+                    </div>
+
+                    {/* Sections */}
+                    <div className="grid grid-cols-1 gap-6">
+                      {aiReport.sections.map((section, idx) => (
+                        <Card key={idx} className="p-6">
+                          <h4 className="font-bold text-lg mb-4">{section.title}</h4>
+                          <p className="text-slate-700 mb-6 whitespace-pre-wrap leading-relaxed">{section.content}</p>
+                          
+                          {section.chart && section.chart.data && section.chart.data.length > 0 && (
+                            <div className="mt-6 border-t pt-6">
+                              <h5 className="font-medium text-center text-slate-600 mb-4">{section.chart.title}</h5>
+                              <div className="h-64 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  {section.chart.type === 'bar' ? (
+                                    <BarChart data={section.chart.data}>
+                                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                                      <Tooltip cursor={{ fill: '#f1f5f9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                      <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                  ) : section.chart.type === 'pie' ? (
+                                    <PieChart>
+                                      <Pie data={section.chart.data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                                        {section.chart.data.map((_, index) => (
+                                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                      </Pie>
+                                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                      <Legend />
+                                    </PieChart>
+                                  ) : (
+                                    <LineChart data={section.chart.data}>
+                                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                      <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                                    </LineChart>
+                                  )}
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                          )}
+                        </Card>
+                      ))}
+                    </div>
+
+                    {/* Suggestions */}
+                    {aiReport.suggestions && aiReport.suggestions.length > 0 && (
+                      <Card className="p-6 bg-slate-900 text-white">
+                        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                          <Lightbulb className="w-5 h-5 text-yellow-400" /> 行动建议
+                        </h3>
+                        <ul className="space-y-3">
+                          {aiReport.suggestions.map((sug, idx) => (
+                            <li key={idx} className="flex items-start gap-3">
+                              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-sm font-medium text-slate-300">
+                                {idx + 1}
+                              </span>
+                              <span className="text-slate-300 leading-relaxed">{sug}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </Card>
+                    )}
+                  </div>
+                ) : aiAnalysis ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="prose prose-slate max-w-none bg-slate-50 p-6 rounded-xl border border-slate-200 whitespace-pre-wrap text-sm leading-relaxed">
                       <h3 className="font-bold mb-2">分析结果</h3>
@@ -863,7 +1010,7 @@ export default function App() {
                 ) : (
                   <div className="h-64 flex flex-col items-center justify-center text-slate-400 space-y-2 border-2 border-dashed border-slate-100 rounded-xl">
                     <BrainCircuit className="w-12 h-12 opacity-20" />
-                    <p className="text-sm">输入问题并点击“开始分析”生成数据洞察。</p>
+                    <p className="text-sm">输入问题并点击“开始分析”生成图文并茂的数据洞察报告。</p>
                   </div>
                 )}
               </Card>
