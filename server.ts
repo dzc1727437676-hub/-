@@ -153,8 +153,12 @@ async function startServer() {
     }
 
     try {
+      // Clean up baseUrl to avoid appending /chat/completions twice
+      const cleanBaseUrl = baseUrl.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+      const targetUrl = `${cleanBaseUrl}/chat/completions`;
+
       // Use native fetch in Node.js
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,7 +167,15 @@ async function startServer() {
         body: JSON.stringify(payload)
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        return res.status(response.status || 500).json({ 
+          error: `API 返回了非 JSON 格式的数据 (状态码: ${response.status}): ${text.substring(0, 100)}...` 
+        });
+      }
       
       if (!response.ok) {
         return res.status(response.status).json(data);
