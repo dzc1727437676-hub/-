@@ -324,19 +324,23 @@ export default function App() {
 
     setIsAnalyzing(true);
     try {
-      // Flexible API call (OpenAI compatible)
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      // Use our backend proxy to bypass CORS issues with third-party APIs (like NVIDIA)
+      const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: modelName,
-          messages: [
-            {
-              role: 'system',
-              content: `你是一个专业的电商数据分析专家。
+          baseUrl: baseUrl,
+          apiKey: apiKey,
+          payload: {
+            model: modelName,
+            max_tokens: 8192,
+            temperature: 0.7,
+            messages: [
+              {
+                role: 'system',
+                content: `你是一个专业的电商数据分析专家。
 请根据用户提供的数据摘要和具体问题进行深度分析。
 你必须以严格的 JSON 格式输出你的分析结果，不要包含任何 Markdown 格式（如 \`\`\`json），直接输出 JSON 字符串。
 JSON 结构必须如下：
@@ -356,38 +360,39 @@ JSON 结构必须如下：
   ],
   "suggestions": ["行动建议1", "行动建议2"]
 }`
-            },
-            {
-              role: 'user',
-              content: `
-                数据分析上下文:
-                1. 总体概况:
-                   - 总订单数: ${orderCount}
-                   - 总销售额: ¥${filteredData.reduce((acc, d) => acc + (d['销售额'] || 0), 0).toLocaleString()}
-                   - 总销量: ${filteredData.reduce((acc, d) => acc + (d['销量'] || 0), 0).toLocaleString()}
-                
-                2. 平台销售分布 (销售额):
-                   ${JSON.stringify(getPlatformChartData(filteredData, 'sales'), null, 2)}
-                
-                3. 每周销售趋势 (销售额):
-                   ${JSON.stringify(getWeeklyChartData(filteredData, 'sales'), null, 2)}
-                
-                4. 品类表现摘要 (前15名):
-                   ${JSON.stringify(getSummaryData(filteredData).sort((a, b) => b.sales - a.sales).slice(0, 15), null, 2)}
+              },
+              {
+                role: 'user',
+                content: `
+                  数据分析上下文:
+                  1. 总体概况:
+                     - 总订单数: ${orderCount}
+                     - 总销售额: ¥${filteredData.reduce((acc, d) => acc + (d['销售额'] || 0), 0).toLocaleString()}
+                     - 总销量: ${filteredData.reduce((acc, d) => acc + (d['销量'] || 0), 0).toLocaleString()}
+                  
+                  2. 平台销售分布 (销售额):
+                     ${JSON.stringify(getPlatformChartData(filteredData, 'sales'), null, 2)}
+                  
+                  3. 每周销售趋势 (销售额):
+                     ${JSON.stringify(getWeeklyChartData(filteredData, 'sales'), null, 2)}
+                  
+                  4. 品类表现摘要 (前15名):
+                     ${JSON.stringify(getSummaryData(filteredData).sort((a, b) => b.sales - a.sales).slice(0, 15), null, 2)}
 
-                5. 数据样本 (前10条):
-                   ${JSON.stringify(filteredData.slice(0, 10), null, 2)}
-                
-                用户的问题: ${userQuery || '请对当前数据进行常规分析，包括趋势、品类表现和改进建议。'}
-              `
-            }
-          ]
+                  5. 数据样本 (前10条):
+                     ${JSON.stringify(filteredData.slice(0, 10), null, 2)}
+                  
+                  用户的问题: ${userQuery || '请对当前数据进行常规分析，包括趋势、品类表现和改进建议。'}
+                `
+              }
+            ]
+          }
         })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error?.message || `请求失败: ${response.status}`);
+        throw new Error(errorData.error?.message || errorData.error || `请求失败: ${response.status}`);
       }
 
       const result = await response.json();

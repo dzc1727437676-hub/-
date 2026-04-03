@@ -144,6 +144,37 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // Proxy endpoint for AI requests to bypass CORS
+  app.post("/api/ai/chat", async (req, res) => {
+    const { baseUrl, apiKey, payload } = req.body;
+    
+    if (!baseUrl || !apiKey || !payload) {
+      return res.status(400).json({ error: "Missing baseUrl, apiKey, or payload" });
+    }
+
+    try {
+      // Use native fetch in Node.js
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return res.status(response.status).json(data);
+      }
+
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
